@@ -2,13 +2,14 @@
 
 # Recreate Existing Multisig Account Script
 
-# Predefined Multisig Account Address
-MULTISIG_ACCOUNT="accout maybe from testnet"
+# Predefined Multisig Account Address and Keypair
+MULTISIG_ACCOUNT="7jHAcDf9dCYLrx5yGg1EKv9Z9UFDG9CVgzp7QDnfEP98"
+MULTISIG_KEYPAIR="$HOME/multisig-keypair.json"
 
 # Define Owner Keypaths
 OWNER1_KEYPAIR="$HOME/owner1.json"
 OWNER2_KEYPAIR="$HOME/owner2.json"
-ADDITIONAL_OWNER="other owner"
+ADDITIONAL_OWNER="4yL2V1bp7eTzugnd5CjcJhT5jio9FHdUfaMnoZM8NiW3"
 
 # Function to verify network
 check_network() {
@@ -37,10 +38,10 @@ recreate_multisig() {
     echo "Recreating Multisig Account..."
     
     # Create multisig with specific parameters
-    solana multisig create \
-        --m 2 \
-        --multisig-account "$MULTISIG_ACCOUNT" \
-        --owners "$OWNER1_PUBKEY" "$OWNER2_PUBKEY" "$ADDITIONAL_OWNER"
+    spl-token create-multisig \
+        2 \
+        "$OWNER1_PUBKEY" "$OWNER2_PUBKEY" "$ADDITIONAL_OWNER" \
+        --address-keypair "$MULTISIG_KEYPAIR"
 }
 
 # Main script execution
