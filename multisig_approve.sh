@@ -76,7 +76,7 @@ SIGNER_PUBKEY=$(solana-keygen pubkey "$KEY_TO_USE")
 echo "Signing with key: $SIGNER_PUBKEY from file: $KEY_TO_USE"
 
 # Get the latest blockhash
-BLOCKHASH=$(solana blockhash | cut -d ' ' -f1)
+BLOCKHASH=$(curl -s -X POST -H "Content-Type: application/json" -d '{"jsonrpc":"2.0","id":1,"method":"getLatestBlockhash"}' https://api.mainnet-beta.solana.com | jq -r '.result.value.blockhash')
 if [ -z "$BLOCKHASH" ]; then
   echo "Error: Failed to get blockhash"
   exit 1
