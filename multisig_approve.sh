@@ -4,8 +4,9 @@
 KEYS=("owner1.json" "owner2.json")  # Key files for owners
 TX_FILE="pending_tx.json"  # File containing the transaction to approve
 OUTPUT_TX="signed_tx.json"  # Output file for the fully signed transaction
-FEE_PAYER="${KEYS[0]}"  # First owner will pay transaction fees
 MULTISIG_ADDRESS="4P8GVC6XEo2ro96BdocZxfFtg5Mu5woXwMWo2vThykcn"  # Fill in your multisig address here or pass as an argument
+RECIPIENT="4P8GVC6XEo2ro96BdocZxfFtg5Mu5woXwMWo2vThykcn"
+AMOUNT="0.005"
 
 # Parse command line arguments
 KEY_TO_USE=""
@@ -89,25 +90,17 @@ echo "Signing transaction from $TX_FILE..."
 # Check if the output file already exists (multisig may require multiple signatures)
 if [ -f "$OUTPUT_TX" ]; then
   echo "Found existing partially signed transaction in $OUTPUT_TX"
-  # Sign existing transaction
-  solana sign \
-    --signer "$KEY_TO_USE" \
-    --blockhash "$BLOCKHASH" \
-    -t "$OUTPUT_TX" \
-    "$TX_FILE" || {
-      echo "Error: Failed to sign existing transaction"
-      exit 1
-    }
+  # Sign existing transaction using the alternative approach
+  cat "$TX_FILE" | solana transfer --from "$MULTISIG_ADDRESS" "$RECIPIENT" "$AMOUNT" --fee-payer "$KEY_TO_USE"  --blockhash "$BLOCKHASH" --sign-only  -k "$KEY_TO_USE"  --dump-transaction-message > "$TX_FILE" || {
+    echo "Error: Failed to sign transaction"
+    exit 1
+  }
 else
-  # Create new signed transaction
-  solana sign \
-    --signer "$KEY_TO_USE" \
-    --blockhash "$BLOCKHASH" \
-    -o "$OUTPUT_TX" \
-    "$TX_FILE" || {
-      echo "Error: Failed to sign transaction"
-      exit 1
-    }
+  # Create new signed transaction using the alternative approach
+  cat "$TX_FILE" | solana transfer --fee-payer "$KEY_TO_USE" --from /dev/stdin --sign-only  -k "$KEY_TO_USE"  --dump-transaction-message > "$TX_FILE" || {
+    echo "Error: Failed to sign transaction"
+    exit 1
+  }
 fi
 
 echo "Transaction signed and saved to $OUTPUT_TX"
@@ -117,10 +110,10 @@ if [ "$SUBMIT" = true ]; then
   echo "Submitting transaction to the Solana network..."
   
   # Submit transaction
-  solana send "$OUTPUT_TX" || {
-      echo "Error: Failed to submit transaction"
-      exit 1
-    }
+  solana confirm -v "$OUTPUT_TX" || {
+    echo "Error: Failed to submit transaction"
+    exit 1
+  }
   
   echo "Transaction submitted successfully!"
 else
