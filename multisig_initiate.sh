@@ -84,7 +84,7 @@ validate_address "$MULTISIG_ADDRESS"
 validate_address "$RECIPIENT"
 
 # Get the latest blockhash
-BLOCKHASH=$(solana block --output json | jq '.blockhash')
+BLOCKHASH=$(curl -s -X POST -H "Content-Type: application/json" -d '{"jsonrpc":"2.0","id":1,"method":"getLatestBlockhash"}' https://api.mainnet-beta.solana.com | jq -r '.result.value.blockhash')
 if [ -z "$BLOCKHASH" ]; then
   echo "Error: Failed to get blockhash"
   exit 1
