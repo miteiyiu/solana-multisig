@@ -1,58 +1,129 @@
 #!/bin/bash
 
-# Multisig Transaction Approval Script
+# Configuration - Adjust paths to match your setup
+KEYS=("owner1.json" "owner2.json")  # Key files for owners
+TX_FILE="pending_tx.json"  # File containing the transaction to approve
+OUTPUT_TX="signed_tx.json"  # Output file for the fully signed transaction
+FEE_PAYER="${KEYS[0]}"  # First owner will pay transaction fees
+MULTISIG_ADDRESS="4P8GVC6XEo2ro96BdocZxfFtg5Mu5woXwMWo2vThykcn"  # Fill in your multisig address here or pass as an argument
 
-# Check if required arguments are provided
-if [ $# -ne 2 ]; then
-    echo "Usage: $0 <MULTISIG_ACCOUNT_ADDRESS> <PATH_TO_OWNER_KEYPAIR>"
-    exit 1
+# Parse command line arguments
+KEY_TO_USE=""
+SUBMIT=false
+
+function print_usage {
+  echo "Usage: $0 [options]"
+  echo ""
+  echo "Options:"
+  echo "  --key KEYFILE                   Specify key file to sign with (required)"
+  echo "  --tx-file FILENAME              Transaction file to sign (default: pending_tx.json)"
+  echo "  --output FILENAME               Output file for signed transaction (default: signed_tx.json)"
+  echo "  --submit                        Submit transaction after signing"
+  exit 1
+}
+
+# Parse arguments
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --key)
+      KEY_TO_USE="$2"
+      shift 2
+      ;;
+    --tx-file)
+      TX_FILE="$2"
+      shift 2
+      ;;
+    --output)
+      OUTPUT_TX="$2"
+      shift 2
+      ;;
+    --submit)
+      SUBMIT=true
+      shift
+      ;;
+    *)
+      print_usage
+      ;;
+  esac
+done
+
+# Validate required parameters
+if [ -z "$KEY_TO_USE" ]; then
+  echo "Error: Key file is required. Use --key option."
+  print_usage
 fi
 
-# Assign arguments to variables
-MULTISIG_ACCOUNT=$1
-OWNER_KEYPAIR=$2
+# Check if key file exists
+if [ ! -f "$KEY_TO_USE" ]; then
+  echo "Error: Key file '$KEY_TO_USE' not found."
+  exit 1
+fi
 
-# Function to list pending transactions
-list_pending_transactions() {
-    echo "Listing pending transactions for multisig account: $MULTISIG_ACCOUNT"
-    solana multisig list-transactions --multisig-account $MULTISIG_ACCOUNT
-}
+# Check if transaction file exists
+if [ ! -f "$TX_FILE" ]; then
+  echo "Error: Transaction file '$TX_FILE' not found."
+  exit 1
+fi
 
-# Function to approve a specific transaction
-approve_transaction() {
-    local TRANSACTION_ID=$1
-    echo "Approving transaction $TRANSACTION_ID"
-    solana multisig approve \
-        --multisig-account $MULTISIG_ACCOUNT \
-        --keypair $OWNER_KEYPAIR \
-        $TRANSACTION_ID
-}
+# Check required Solana CLI tools
+if ! command -v solana &> /dev/null; then
+  echo "Error: Solana CLI not found. Please install it first."
+  exit 1
+fi
 
-# Main script logic
-main() {
-    # List pending transactions
-    list_pending_transactions
+# Get the public key from the key file
+SIGNER_PUBKEY=$(solana-keygen pubkey "$KEY_TO_USE")
+echo "Signing with key: $SIGNER_PUBKEY from file: $KEY_TO_USE"
 
-    # Prompt user to select a transaction to approve
-    echo -n "Enter the Transaction ID to approve (or 'q' to quit): "
-    read TRANSACTION_ID
+# Get the latest blockhash
+BLOCKHASH=$(solana blockhash | cut -d ' ' -f1)
+if [ -z "$BLOCKHASH" ]; then
+  echo "Error: Failed to get blockhash"
+  exit 1
+fi
+echo "Using blockhash: $BLOCKHASH"
 
-    # Check if user wants to quit
-    if [ "$TRANSACTION_ID" = "q" ]; then
-        echo "Exiting script."
-        exit 0
-    fi
+# Sign the transaction
+echo "Signing transaction from $TX_FILE..."
 
-    # Approve the selected transaction
-    approve_transaction $TRANSACTION_ID
+# Check if the output file already exists (multisig may require multiple signatures)
+if [ -f "$OUTPUT_TX" ]; then
+  echo "Found existing partially signed transaction in $OUTPUT_TX"
+  # Sign existing transaction
+  solana sign \
+    --signer "$KEY_TO_USE" \
+    --blockhash "$BLOCKHASH" \
+    -t "$OUTPUT_TX" \
+    "$TX_FILE" || {
+      echo "Error: Failed to sign existing transaction"
+      exit 1
+    }
+else
+  # Create new signed transaction
+  solana sign \
+    --signer "$KEY_TO_USE" \
+    --blockhash "$BLOCKHASH" \
+    -o "$OUTPUT_TX" \
+    "$TX_FILE" || {
+      echo "Error: Failed to sign transaction"
+      exit 1
+    }
+fi
 
-    # Check approval status
-    if [ $? -eq 0 ]; then
-        echo "Transaction $TRANSACTION_ID approved successfully."
-    else
-        echo "Failed to approve transaction $TRANSACTION_ID"
-    fi
-}
+echo "Transaction signed and saved to $OUTPUT_TX"
 
-# Run the main function
-main
+# Submit if requested and transaction is complete
+if [ "$SUBMIT" = true ]; then
+  echo "Submitting transaction to the Solana network..."
+  
+  # Submit transaction
+  solana send "$OUTPUT_TX" || {
+      echo "Error: Failed to submit transaction"
+      exit 1
+    }
+  
+  echo "Transaction submitted successfully!"
+else
+  echo "Transaction not submitted. Add --submit flag to submit after signing."
+  echo "Note: For multisig, all required signers must sign before submission."
+fi
